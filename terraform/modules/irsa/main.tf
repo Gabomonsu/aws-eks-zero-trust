@@ -3,20 +3,21 @@ locals {
   trust_conditions = var.use_pod_identity ? [] : var.namespaces
 }
 
-# Trust policy para Pod Identity (recomendado: sin necesidad de OIDC federation)
+# Trust policy para Pod Identity (recomendado: EKS Pod Identity usa el
+# service principal pods.eks.amazonaws.com, NO OIDC federation)
 data "aws_iam_policy_document" "pod_identity_trust" {
   count = var.use_pod_identity ? 1 : 0
   statement {
-    actions = ["sts:AssumeRoleWithWebIdentity"]
+    actions = ["sts:AssumeRole", "sts:TagSession"]
     effect  = "Allow"
     principals {
-      type        = "Federated"
-      identifiers = [var.oidc_provider_arn]
+      type        = "Service"
+      identifiers = ["pods.eks.amazonaws.com"]
     }
     condition {
       test     = "StringEquals"
-      variable = "${local.oidc_issuer_url}:aud"
-      values   = ["sts.amazonaws.com"]
+      variable = "aws:SourceAccount"
+      values   = [var.account_id]
     }
   }
 }

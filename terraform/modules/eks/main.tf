@@ -15,6 +15,11 @@ resource "aws_iam_role" "cluster" {
       Principal = {
         Service = "eks.amazonaws.com"
       }
+      Condition = {
+        StringEquals = {
+          "aws:SourceAccount" = data.aws_caller_identity.current.account_id
+        }
+      }
     }]
   })
   tags = merge(var.tags, { Name = "${var.cluster_name}-cluster-role" })
@@ -39,6 +44,11 @@ resource "aws_iam_role" "nodes" {
       Effect = "Allow"
       Principal = {
         Service = "ec2.amazonaws.com"
+      }
+      Condition = {
+        StringEquals = {
+          "aws:SourceAccount" = data.aws_caller_identity.current.account_id
+        }
       }
     }]
   })

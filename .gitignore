@@ -1,19 +1,38 @@
 # Terraform
+# Nota: .terraform.lock.hcl SÍ se commitea (fija versiones de providers = supply-chain)
 terraform/.terraform/
 terraform/*.tfstate
 terraform/*.tfstate.*
 terraform/*.tfvars
+terraform/*.tfvars.json
+terraform/*.auto.tfvars
 terraform/plan.out
-*.tfplan
+terraform/*.plan
+terraform/*.tfplan
+terraform/*.tfplan.json
+terraform/*.tf.json
 *.tfstate.lock.info
 .crash.log
+
+# Archivos de override locales
+**/*.override.tf
+**/*.override.tf.json
 
 # Credenciales y secretos
 *.pem
 *.key
+*.p12
+*.pfx
 .env
 .env.*
+!.env.example
 .aws/
+credentials
+~/.aws/credentials
+
+# Reportes generados por el CI
+checkov-report*/
+*.html
 
 # macOS
 .DS_Store
@@ -22,3 +41,4 @@ terraform/plan.out
 __pycache__/
 *.py[cod]
 .venv/
+*.egg-info/

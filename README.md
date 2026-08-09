@@ -6,6 +6,8 @@
 [![CI](https://img.shields.io/badge/CI-GitHub%20Actions-%232088FF?logo=githubactions&logoColor=white)](https://github.com/features/actions)
 [![Checkov](https://img.shields.io/badge/IaC%20Scan-Checkov-%235C6BC0)](https://www.checkov.io)
 [![TFLint](https://img.shields.io/badge/Lint-TFLint-%235C6BC0)](https://github.com/terraform-linters/tflint)
+[![Dependabot](https://img.shields.io/badge/Dependabot-Enabled-%23224D75?logo=dependabot)](https://docs.github.com/code-security/dependabot)
+[![Security](https://img.shields.io/badge/Security%20Policy-SECURITY.md-%23E74C3C)](SECURITY.md)
 
 > **Zero-Trust en todas las capas**: red, identidad, cifrado y runtime. EKS 100% privado, cifrado con KMS dedicado por servicio y workloads con Pod Identity de mínimo privilegio.
 
@@ -47,7 +49,8 @@ eks-zero-trust-portfolio/
 │   └── app/             # Deployment de ejemplo (non-root, readOnlyRootFS)
 ├── docs/
 │   └── architecture.svg # Diagrama con iconos oficiales AWS
-└── .github/workflows/   # checkov + tflint + terraform validate
+├── SECURITY.md          # Política de divulgación responsable
+└── .github/             # CI (checkov + tflint + validate) + dependabot
 ```
 
 ## Requisitos
@@ -88,13 +91,18 @@ kubectl apply -f ../k8s/network-policies/ # requiere Cilium o Calico
 - [x] ECR imágenes **cifradas con KMS**
 - [x] Secrets Manager **cifrado con KMS**
 - [x] CloudWatch Logs (api/audit/authenticator) **cifrado con KMS**
+- [x] **VPC Flow Logs** habilitados y cifrados con KMS
 - [x] **IMDSv2 required** en nodos
-- [x] **Pod Identity** por workload (sin credentials estáticas)
+- [x] **Pod Identity** por workload (trust confinada a `pods.eks.amazonaws.com` + `aws:SourceAccount`)
+- [x] **Confused-deputy** mitigado: `aws:SourceAccount` en policies de KMS y trust de roles IAM
+- [x] VPC Endpoints con **Security Group dedicado** (solo CIDR de la VPC)
 - [x] NetworkPolicies **default-deny** (Ingress y Egress)
 - [x] **Kyverno** enforce: non-root, no-privileged, readOnlyRootFS, resource limits, seccomp
 - [x] Pod Security Standards `restricted`
 - [x] External Secrets: nada de secrets en YAML ni en el árbol
-- [x] CI: **Checkov + TFLint** antes de merge
+- [x] CI: **Checkov + TFLint** antes de merge, acciones **pineadas a SHA**
+- [x] **Dependabot** activo para GitHub Actions y Terraform
+- [x] Política de divulgación en [SECURITY.md](SECURITY.md)
 
 ## Destrucción
 

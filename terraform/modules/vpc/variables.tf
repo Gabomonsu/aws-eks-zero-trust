@@ -43,6 +43,24 @@ variable "endpoint_sg_ids" {
   description = "Security groups que pueden usar los VPC endpoints (idealmente el/los del host bastion)"
 }
 
+variable "enable_flow_logs" {
+  type        = bool
+  default     = true
+  description = "Habilita VPC Flow Logs hacia CloudWatch Logs (cifrados con KMS)"
+}
+
+variable "flow_logs_retention_days" {
+  type        = number
+  default     = 90
+  description = "Dias de retencion del CloudWatch Log Group de flow logs"
+}
+
+variable "flow_logs_kms_key_arn" {
+  type        = string
+  default     = ""
+  description = "ARN del KMS key para cifrar los flow logs (requerido con enable_flow_logs=true)"
+}
+
 variable "tags" {
   type    = map(string)
   default = {}

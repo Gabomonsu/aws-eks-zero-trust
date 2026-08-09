@@ -6,6 +6,11 @@ variable "cluster_name" {
   type = string
 }
 
+variable "account_id" {
+  type        = string
+  description = "Account ID de AWS (para confinar la trust policy de Pod Identity)"
+}
+
 variable "oidc_provider_arn" {
   type = string
 }

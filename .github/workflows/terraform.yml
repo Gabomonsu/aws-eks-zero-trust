@@ -10,20 +10,28 @@ on:
     branches: [ main ]
     paths:
       - 'terraform/**'
+  workflow_dispatch:
 
 permissions:
   contents: read
   pull-requests: write
+  actions: read
+
+concurrency:
+  group: terraform-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   validate:
     name: Validate & Security Scan
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      # Actions pineadas a SHA inmutables (supply-chain security).
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
         with:
           terraform_version: 1.9.0
 
@@ -45,7 +53,7 @@ jobs:
 
       - name: Checkov scan (IaC security)
         id: checkov
-        uses: bridgecrewio/checkov-action@v12
+        uses: bridgecrewio/checkov-action@9b70310bcd306d11740313070b940167d6b23085 # v12
         with:
           directory: terraform/
           framework: terraform
@@ -53,7 +61,7 @@ jobs:
           download_external_modules: false
 
       - name: TFLint
-        uses: terraform-linters/setup-tflint@v4
+        uses: terraform-linters/setup-tflint@6e1e0642c0289bd619021bf6b34e3c08ed1e005a # v6.3.0
         with:
           tflint_version: v0.50.0
       - name: Init TFLint
@@ -63,7 +71,7 @@ jobs:
 
       - name: Comment Checkov results on PR
         if: github.event_name == 'pull_request' && (steps.checkov.outcome == 'failure' || steps.checkov.outcome == 'success')
-        uses: actions/github-script@v7
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
         with:
           script: |
             const { data: checks } = await github.rest.checks.listForRef({
@@ -75,7 +83,7 @@ jobs:
 
       - name: Upload Checkov report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: checkov-report
           path: terraform/**/*.html

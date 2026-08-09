@@ -32,6 +32,16 @@ provider "aws" {
 
 data "aws_caller_identity" "current" {}
 
+locals {
+  # Confined deputy: las politicas de KMS/IAM aceptan llamadas de servicios
+  # solo si vienen de EL MISMO account (evita cross-account abuse).
+  source_account_condition = {
+    test     = "StringEquals"
+    variable = "aws:SourceAccount"
+    values   = [data.aws_caller_identity.current.account_id]
+  }
+}
+
 # =====================================================================
 # KMS KEYS - un CMK por servicio (zero trust: aislamiento de claves)
 # =====================================================================
@@ -47,7 +57,7 @@ module "kms_s3" {
       principal = { Service = ["s3.amazonaws.com"] }
       action    = ["kms:Encrypt", "kms:Decrypt", "kms:ReEncrypt*", "kms:GenerateDataKey*"]
       resource  = "*"
-      condition = null
+      condition = local.source_account_condition
     }
   ]
 }
@@ -64,7 +74,7 @@ module "kms_dynamodb" {
       principal = { Service = ["dynamodb.amazonaws.com"] }
       action    = ["kms:Encrypt", "kms:Decrypt", "kms:GenerateDataKey*"]
       resource  = "*"
-      condition = null
+      condition = local.source_account_condition
     }
   ]
 }
@@ -81,7 +91,7 @@ module "kms_cluster" {
       principal = { Service = ["eks.amazonaws.com"] }
       action    = ["kms:Decrypt", "kms:GenerateDataKey", "kms:GenerateDataKeyWithoutPlaintext", "kms:DescribeKey"]
       resource  = "*"
-      condition = null
+      condition = local.source_account_condition
     }
   ]
 }
@@ -98,7 +108,7 @@ module "kms_ebs" {
       principal = { Service = ["ec2.amazonaws.com"] }
       action    = ["kms:Decrypt", "kms:Encrypt", "kms:ReEncrypt*", "kms:GenerateDataKey*", "kms:CreateGrant"]
       resource  = "*"
-      condition = null
+      condition = local.source_account_condition
     },
     {
       sid       = "AllowEBSToUseKey"
@@ -106,7 +116,7 @@ module "kms_ebs" {
       principal = { Service = ["ebs.amazonaws.com"] }
       action    = ["kms:Decrypt", "kms:Encrypt", "kms:ReEncrypt*", "kms:GenerateDataKey*", "kms:CreateGrant"]
       resource  = "*"
-      condition = null
+      condition = local.source_account_condition
     }
   ]
   grantee      = module.eks.node_role_arn
@@ -125,7 +135,7 @@ module "kms_ecr" {
       principal = { Service = ["ecr.amazonaws.com"] }
       action    = ["kms:Encrypt", "kms:Decrypt", "kms:GenerateDataKey*", "kms:ReEncrypt*"]
       resource  = "*"
-      condition = null
+      condition = local.source_account_condition
     }
   ]
 }
@@ -142,7 +152,7 @@ module "kms_secrets" {
       principal = { Service = ["secretsmanager.amazonaws.com"] }
       action    = ["kms:Encrypt", "kms:Decrypt", "kms:GenerateDataKey*", "kms:ReEncrypt*"]
       resource  = "*"
-      condition = null
+      condition = local.source_account_condition
     },
     {
       sid       = "AllowSSMToUseKey"
@@ -150,7 +160,7 @@ module "kms_secrets" {
       principal = { Service = ["ssm.amazonaws.com"] }
       action    = ["kms:Encrypt", "kms:Decrypt", "kms:GenerateDataKey*"]
       resource  = "*"
-      condition = null
+      condition = local.source_account_condition
     }
   ]
 }
@@ -167,7 +177,7 @@ module "kms_logs" {
       principal = { Service = ["logs.amazonaws.com"] }
       action    = ["kms:Encrypt", "kms:Decrypt", "kms:GenerateDataKey*"]
       resource  = "*"
-      condition = null
+      condition = local.source_account_condition
     }
   ]
 }
@@ -176,13 +186,15 @@ module "kms_logs" {
 # VPC privada + endpoints (zero trust de red)
 # =====================================================================
 module "vpc" {
-  source              = "./modules/vpc"
-  name                = "eks-zero-trust"
-  region              = var.region
-  cidr_block          = "10.0.0.0/16"
-  az_count            = 3
-  enable_nat          = true
-  interface_endpoints = ["ecr.api", "ecr.dkr", "sts", "logs", "secretsmanager"]
+  source                = "./modules/vpc"
+  name                  = "eks-zero-trust"
+  region                = var.region
+  cidr_block            = "10.0.0.0/16"
+  az_count              = 3
+  enable_nat            = true
+  interface_endpoints   = ["ecr.api", "ecr.dkr", "sts", "logs", "secretsmanager"]
+  enable_flow_logs      = true
+  flow_logs_kms_key_arn = module.kms_logs.key_arn
 }
 
 # =====================================================================
@@ -207,6 +219,7 @@ module "irsa_app" {
   source               = "./modules/irsa"
   role_name            = "eks-zero-trust-app"
   cluster_name         = module.eks.cluster_name
+  account_id           = data.aws_caller_identity.current.account_id
   oidc_provider_arn    = module.eks.oidc_provider_arn
   oidc_provider_url    = module.eks.oidc_provider_url
   namespaces           = ["app"]
@@ -225,13 +238,14 @@ data "aws_iam_policy_document" "app_workload" {
       "kms:Decrypt"
     ]
     resources = [
-      module.kms_secrets.key_arn,
       module.kms_secrets.key_arn
     ]
   }
   statement {
-    effect    = "Allow"
-    actions   = ["ssm:GetParameter", "ssm:GetParameters", "ssm:GetParametersByPath"]
-    resources = ["*"]
+    effect  = "Allow"
+    actions = ["ssm:GetParameter", "ssm:GetParameters", "ssm:GetParametersByPath"]
+    resources = [
+      "arn:aws:ssm:${var.region}:${data.aws_caller_identity.current.account_id}:parameter/eks-zero-trust/*"
+    ]
   }
 }

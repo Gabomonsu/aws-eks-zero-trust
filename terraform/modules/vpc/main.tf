@@ -114,6 +114,84 @@ resource "aws_route_table_association" "private" {
   route_table_id = aws_route_table.private[var.enable_nat ? count.index : 0].id
 }
 
+# ---------- VPC Flow Logs (deteccion/forense, cifrados con KMS) ----------
+resource "aws_cloudwatch_log_group" "flow_logs" {
+  count             = var.enable_flow_logs ? 1 : 0
+  name              = "${var.name}-flow-logs"
+  retention_in_days = var.flow_logs_retention_days
+  kms_key_id        = var.flow_logs_kms_key_arn
+  tags = merge(var.tags, {
+    Name      = "${var.name}-flow-logs"
+    Component = "vpc-flow-logs"
+  })
+}
+
+resource "aws_flow_log" "this" {
+  count                = var.enable_flow_logs ? 1 : 0
+  vpc_id               = aws_vpc.this.id
+  traffic_type         = "ALL"
+  log_destination      = aws_cloudwatch_log_group.flow_logs[0].arn
+  log_destination_type = "cloud-watch-logs"
+  iam_role_arn         = var.enable_flow_logs ? aws_iam_role.flow_logs[0].arn : null
+
+  tags = merge(var.tags, {
+    Name      = "${var.name}-flow-logs"
+    Component = "vpc-flow-logs"
+  })
+}
+
+resource "aws_iam_role" "flow_logs" {
+  count                = var.enable_flow_logs ? 1 : 0
+  name                 = "${var.name}-flow-logs-role"
+  assume_role_policy   = var.enable_flow_logs ? data.aws_iam_policy_document.flow_logs_trust[0].json : "{}"
+  path                 = "/"
+  max_session_duration = 3600
+  tags = merge(var.tags, {
+    Name      = "${var.name}-flow-logs-role"
+    Component = "vpc-flow-logs"
+  })
+}
+
+data "aws_iam_policy_document" "flow_logs_trust" {
+  count = var.enable_flow_logs ? 1 : 0
+  statement {
+    effect  = "Allow"
+    actions = ["sts:AssumeRole"]
+    principals {
+      type        = "Service"
+      identifiers = ["vpc-flow-logs.amazonaws.com"]
+    }
+    condition {
+      test     = "StringEquals"
+      variable = "aws:SourceAccount"
+      values   = [data.aws_caller_identity.current.account_id]
+    }
+  }
+}
+
+data "aws_iam_policy_document" "flow_logs_policy" {
+  count = var.enable_flow_logs ? 1 : 0
+  statement {
+    effect = "Allow"
+    actions = [
+      "logs:CreateLogStream",
+      "logs:PutLogEvents",
+      "logs:DescribeLogGroups",
+      "logs:DescribeLogStreams"
+    ]
+    resources = ["*"]
+  }
+}
+
+resource "aws_iam_role_policy" "flow_logs" {
+  count  = var.enable_flow_logs ? 1 : 0
+  name   = "${var.name}-flow-logs-policy"
+  role   = aws_iam_role.flow_logs[0].name
+  policy = data.aws_iam_policy_document.flow_logs_policy[0].json
+}
+
+data "aws_caller_identity" "current" {}
+
 # ---------- Gateway endpoint para S3 (gratis, no genera cargo) ----------
 resource "aws_vpc_endpoint" "s3" {
   vpc_id            = aws_vpc.this.id
@@ -125,6 +203,31 @@ resource "aws_vpc_endpoint" "s3" {
   })
 }
 
+# ---------- Security group dedicado para VPC endpoints ----------
+# Zero trust: solo el CIDR de la VPC puede hablar con los endpoints.
+# Si el usuario no pasa SG propios, creamos uno restringido a la VPC.
+resource "aws_security_group" "endpoints" {
+  count                  = length(var.endpoint_sg_ids) == 0 ? 1 : 0
+  name                   = "${var.name}-vpc-endpoints-sg"
+  description            = "Acceso a VPC endpoints (zero trust: solo CIDR de la VPC)"
+  vpc_id                 = aws_vpc.this.id
+  revoke_rules_on_delete = true
+  tags = merge(var.tags, {
+    Name      = "${var.name}-vpc-endpoints-sg"
+    Component = "vpc-endpoints"
+  })
+}
+
+resource "aws_vpc_security_group_ingress_rule" "endpoints_https" {
+  count             = length(var.endpoint_sg_ids) == 0 ? 1 : 0
+  security_group_id = aws_security_group.endpoints[0].id
+  cidr_ipv4         = var.cidr_block
+  ip_protocol       = "tcp"
+  from_port         = 443
+  to_port           = 443
+  description       = "HTTPS desde la VPC hacia endpoints"
+}
+
 # ---------- Interface endpoints para servicios privados ----------
 resource "aws_vpc_endpoint" "interface" {
   for_each            = var.interface_endpoints
@@ -133,7 +236,7 @@ resource "aws_vpc_endpoint" "interface" {
   vpc_endpoint_type   = "Interface"
   private_dns_enabled = true
   subnet_ids          = aws_subnet.private[*].id
-  security_group_ids  = var.endpoint_sg_ids
+  security_group_ids  = length(var.endpoint_sg_ids) > 0 ? var.endpoint_sg_ids : [aws_security_group.endpoints[0].id]
 
   tags = merge(var.tags, {
     Name = "${var.name}-${each.value}-endpoint"
