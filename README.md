@@ -11,34 +11,9 @@
 
 Arquitectura **compleja** de AWS con **EKS privado** y modelo de seguridad **Zero-Trust** en todas las capas: red, identidad, cifrado y runtime. 100% provisionada con Terraform y con KMS como cifrado de todos los servicios.
 
-```
-┌──────────────────────────────────────────────────────────────────────┐
-│                           GitHub / Bitbucket                          │
-└─────────────────────────────────┬────────────────────────────────────┘
-                                  │ CodePipeline + CodeBuild (checkov/tflint)
-                                  ▼
-┌────────────────────────── AWS Private VPC (10.0.0.0/16) ─────────────┐
-│                                                                       │
-│  ┌──────────── Private Subnets (3 AZs) ──────────────┐                │
-│  │                                                     │              │
-│  │   ┌────────────── EKS (private endpoint) ────────┐  │              │
-│  │   │                                              │  │              │
-│  │   │   ┌────────┐   ┌────────┐   ┌────────────┐   │  │              │
-│  │   │   │Ingress │──▶│Backend │──▶│ Secreto via │   │  │               │
-│  │   │   │(ALB -   │   │ (mTLS/ │   │ External   │   │  │               │
-│  │   │   │ internal│   │ netpol)│   │ Secrets →  │   │  │               │
-│  │   │   └────────┘   └────────┘   │ SecretsMgr  │   │  │               │
-│  │   │                             └────────────┘   │  │               │
-│  │   └──────────────────────────────────────────────┘  │               │
-│  │                                                     │               │
-│  └────────────────┬────────────────────────────────────┘               │
-│                   │ NAT Gateway                        │               │
-│  ┌────────────────▼────────────────────────────────────┐               │
-│  │       AWS PrivatELB / NAT / VPC Endpoints           │                │
-│  │  (ecr.api · ecr.dkr · sts · logs · secretsmanager)  │                │
-│  └─────────────────────────────────────────────────────┘               │
-└────────────────────────────────────────────────────────────────────────────────────┘
-```
+<p align="center">
+  <img src="docs/architecture.svg" alt="Diagrama de arquitectura AWS EKS Zero-Trust" width="100%">
+</p>
 
 ## Contenido
 
@@ -70,6 +45,8 @@ eks-zero-trust-portfolio/
 │   ├── kyverno/         # Admission policies enforce
 │   ├── external-secrets/ # SecretStore + ExternalSecret
 │   └── app/             # Deployment de ejemplo (non-root, readOnlyRootFS)
+├── docs/
+│   └── architecture.svg # Diagrama con iconos oficiales AWS
 └── .github/workflows/   # checkov + tflint + terraform validate
 ```
 
