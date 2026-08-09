@@ -1,0 +1,117 @@
+# ----------------------------------------------------------------
+# NetworkPolicy - Zero Trust por defecto
+# Solo lo declarado puede comunicarse. Sin excepciones implícitas.
+# Se combinan (netpol) para crear reglas OR (cualquiera que matchee
+# una policy habilitada permite el trafico hacia ese pod).
+# ----------------------------------------------------------------
+
+# 1) Denegar todo hacia pods del namespace app por defecto
+#    (matcher vacio => policy "paraguas" que impone default-deny,
+#     pues un pod solo habilita trafico cuando hay al menos una
+#     network policy que lo permita)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-app
+  namespace: app
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+---
+# 2) Permitir únicamente DNS (kube-dns) y healthcheck interno
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-app
+  namespace: app
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+        - podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+---
+# 3) El frontend solo acepta trafico del ALB ingress controller
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: frontend-allow-ingress
+  namespace: app
+spec:
+  podSelector:
+    matchLabels:
+      app: frontend
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 8080
+---
+# 4) El backend solo acepta trafico del frontend y del healthcheck
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: backend-allow-frontend
+  namespace: app
+spec:
+  podSelector:
+    matchLabels:
+      app: backend
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: frontend
+      ports:
+        - protocol: TCP
+          port: 80
+    - from:
+        - podSelector:
+            matchLabels:
+              app: backend # se revisa a si mismo (readiness probes)
+      ports:
+        - protocol: TCP
+          port: 8081
+---
+# 5) El backend egresa hacia secretsmanager via VPC endpoint (private IP)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: backend-egress-secrets
+  namespace: app
+spec:
+  podSelector:
+    matchLabels:
+      app: backend
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 10.0.0.0/16 # VPC CIDR (endpoint privado)
+      ports:
+        - protocol: TCP
+          port: 443

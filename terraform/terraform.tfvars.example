@@ -1,0 +1,4 @@
+region         = "us-east-1"
+environment    = "sandbox"
+owner          = "tu-nombre-o-email"
+kubernetes_version = "1.31"

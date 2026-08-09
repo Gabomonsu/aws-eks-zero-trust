@@ -1,0 +1,165 @@
+# ----------------------------------------------------------------
+# Kyverno - Admission Policy (zero trust en runtime)
+# Nada entra al cluster si no cumple estas politicas
+# ----------------------------------------------------------------
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-readonly-rootfs
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: ro-rootfs
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      validate:
+        message: "Los contenedores deben correr con readOnlyRootFilesystem: true"
+        pattern:
+          spec:
+            containers:
+              - readOnlyRootFilesystem: "true"
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: forbid-privileged
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: no-privileged
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      validate:
+        message: "No se permite correr contenedores privileged"
+        pattern:
+          spec:
+            containers:
+              - securityContext:
+                  privileged: "false"
+              - =(
+                  securityContext:
+                    privileged: "false"
+                )
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-run-as-nonroot
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: no-root
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      validate:
+        message: "Los pods deben correr como usuario no-root"
+        pattern:
+          spec:
+            runAsNonRoot: "true"
+          =(ephemeralContainers):
+            - =(securityContext):
+                runAsNonRoot: "true"
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-resource-limits
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: limits-required
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      validate:
+        message: "Todos los contenedores deben declarar limits y requests"
+        pattern:
+          spec:
+            containers:
+              - resources:
+                  requests:
+                    cpu: "?*"
+                    memory: "?*"
+                  limits:
+                    cpu: "?*"
+                    memory: "?*"
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: restrict-seccomp
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: seccomp-default
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      validate:
+        message: "Se requiere seccompProfile tipo RuntimeDefault"
+        pattern:
+          spec:
+            =(securityContext):
+              =(seccompProfile):
+                type: RuntimeDefault
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: disallow-host-namespaces
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: no-host-namespaces
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      validate:
+        message: "No se permite compartir namespaces del host"
+        pattern:
+          spec:
+            =(hostPID): "false"
+            =(hostIPC): "false"
+            =(hostNetwork): "false"
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-annotations-owner
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: require-owner-annotation
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      validate:
+        message: "Todo pod requiere la annotation team.zero-trust/owner"
+        pattern:
+          metadata:
+            annotations:
+              team.zero-trust/owner: "?*"

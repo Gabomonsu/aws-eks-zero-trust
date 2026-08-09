@@ -1,0 +1,24 @@
+# Terraform
+terraform/.terraform/
+terraform/*.tfstate
+terraform/*.tfstate.*
+terraform/*.tfvars
+terraform/plan.out
+*.tfplan
+*.tfstate.lock.info
+.crash.log
+
+# Credenciales y secretos
+*.pem
+*.key
+.env
+.env.*
+.aws/
+
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
