@@ -13,6 +13,20 @@ resource "aws_vpc" "this" {
   })
 }
 
+# Cierra el default SG que AWS crea por VPC (por defecto permite todo el trafico
+# dentro de la VPC). Zero trust: sin reglas por defecto.
+resource "aws_default_security_group" "this" {
+  vpc_id = aws_vpc.this.id
+
+  ingress = []
+  egress  = []
+
+  tags = merge(var.tags, {
+    Name      = "${var.name}-default-sg"
+    Component = "vpc"
+  })
+}
+
 data "aws_availability_zones" "available" {
   state = "available"
 }
@@ -179,7 +193,7 @@ data "aws_iam_policy_document" "flow_logs_policy" {
       "logs:DescribeLogGroups",
       "logs:DescribeLogStreams"
     ]
-    resources = ["*"]
+    resources = var.enable_flow_logs ? [aws_cloudwatch_log_group.flow_logs[0].arn, "${aws_cloudwatch_log_group.flow_logs[0].arn}:*"] : []
   }
 }
 

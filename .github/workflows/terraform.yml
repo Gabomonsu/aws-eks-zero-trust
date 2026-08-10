@@ -59,6 +59,14 @@ jobs:
           framework: terraform
           soft_fail: true
           download_external_modules: false
+          # Skips solo para falso-positivos documentados:
+          #  - CKV_AWS_44/45/94  recursos que la arquitectura provisisona fuera de este repo
+          #  - CKV_AWS_109/111/356 sobre modules/kms/main.tf: el statement
+          #    "EnableIAMRootPermissions" (kms:* al root del account) es el patron
+          #    OBLIGATORIO que AWS exige en toda key policy; sin el, el root pierde control.
+          #  - CKV2_AWS_5 sobre endpoints_sg: el SG SI esta adjunto (security_group_ids
+          #    del aws_vpc_endpoint.interface), checkov no resuelve la referencia.
+          skip_check: CKV_AWS_44,CKV_AWS_45,CKV_AWS_94,CKV_AWS_109,CKV_AWS_111,CKV_AWS_356,CKV2_AWS_5
 
       - name: TFLint
         uses: terraform-linters/setup-tflint@6e1e0642c0289bd619021bf6b34e3c08ed1e005a # v6.3.0

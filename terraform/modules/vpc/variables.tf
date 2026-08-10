@@ -51,7 +51,7 @@ variable "enable_flow_logs" {
 
 variable "flow_logs_retention_days" {
   type        = number
-  default     = 90
+  default     = 365
   description = "Dias de retencion del CloudWatch Log Group de flow logs"
 }
 

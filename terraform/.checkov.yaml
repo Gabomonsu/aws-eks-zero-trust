@@ -1,12 +1,14 @@
-# This file lists checkov/custom checks intentionally skipped and the reason why.
-# Each exception is documented — nothing is skipped silently.
-skipped:
-  - check_id: CKV_AWS_44
-    reason: "RDS backup retention - en esta arquitectura la DB real va en AWS RDS aparte (no se define aquí)"
-  - check_id: CKV_AWS_45
-    reason: "S3 versioning - el bucket de estado se gestiona por separado con la cuenta de deploy"
-  - check_id: CKV_AWS_94
-    reason: "ALB desplegado por ALB Ingress Controller (kubernetes), no por Terraform"
-
-# Enable parsing of .tf files outside terraform/ (e.g. within k8s dirs use kustomize)
-directory: terraform
+# Configuracion de Checkov.
+#
+# IMPORTANTE: los skips se pasan via --skip-check (input `skip_check` del action
+# en .github/workflows/terraform.yml). NO usar la clave `skipped:` aqui:
+# checkov v3.x la re-aplica como `--skip_check=` (underscore), que ya no existe
+# en su CLI y rompe el run con "unrecognized arguments".
+#
+# Los checks que se omiten y el motivo:
+#   - CKV_AWS_44  RDS backup retention -> la DB real va en AWS RDS aparte
+#   - CKV_AWS_45  S3 versioning        -> el bucket de estado se gestiona aparte
+#   - CKV_AWS_94  ALB                 -> desplegado por ALB Ingress Controller
+framework:
+  - terraform
+compact: true
