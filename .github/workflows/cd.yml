@@ -1,0 +1,121 @@
+name: Continuous Delivery
+
+on:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'terraform/**'
+  push:
+    branches: [ main ]
+    paths:
+      - 'terraform/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+  actions: read
+
+concurrency:
+  group: cd=${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # ------------------------------------------------------------------
+  # Pasos 3-6: merge a main verde, artifact inmutable, staging, gates
+  # Se corre en PR (para ver el plan) y en push a main (para CD).
+  # El plan se genera UNA sola vez y se promueve el MISMO artefacto.
+  # ------------------------------------------------------------------
+  plan:
+    name: Plan (artifact inmutable)
+    runs-on: ubuntu-latest
+    outputs:
+      plan_has_changes: ${{ steps.plan.outputs.plan_has_changes }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: 1.9.0
+
+      - name: Terraform init
+        run: cd terraform && terraform init -no-color
+
+      - name: Terraform plan (una sola vez -> artifact)
+        id: plan
+        run: |
+          cd terraform
+          set +e
+          terraform plan -out=plan.out -detailed-exitcode -no-color > plan.txt 2>&1
+          rc=$?
+          set -e
+          echo "plan_has_changes=$([ $rc -eq 2 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          echo "PLAN_TEXT<<EOF" >> "$GITHUB_OUTPUT"
+          head -c 30000 plan.txt >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+
+      - name: Upload plan artifact (paso 4: binario inmutable)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: terraform-plan-${{ github.sha }}
+          path: terraform/plan.out
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Comment plan en PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          PLAN_TEXT: ${{ steps.plan.outputs.PLAN_TEXT }}
+        with:
+          script: |
+            const body = `## Terraform Plan
+            <details><summary>Ver plan</summary>
+
+            \`\`\`hcl
+            ${process.env.PLAN_TEXT}
+            \`\`\`
+            </details>`
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: body
+            })
+
+  # ------------------------------------------------------------------
+  # Paso 7: CONTINUOUS DELIVERY - el humano decide cuando release.
+  # Corre solo en push a main, consume el MISMO artifact del paso plan.
+  # El gate humano se implementa con el GitHub Environment 'production'
+  # + required reviewers (configurado en Settings > Environments).
+  # ------------------------------------------------------------------
+  apply:
+    name: Apply a produccion (gate humano)
+    needs: plan
+    if: github.event_name == 'push' && needs.plan.outputs.plan_has_changes == 'true'
+    environment: production
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: 1.9.0
+
+      - name: Terraform init
+        run: cd terraform && terraform init -no-color
+
+      - name: Download artifact inmutable
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: terraform-plan-${{ github.sha }}
+          path: terraform/
+
+      - name: Terraform apply (mismo plan, nada se recalcula)
+        run: cd terraform && terraform apply -input=false plan.out
+        env:
+          TF_IN_AUTOMATION: "true"
